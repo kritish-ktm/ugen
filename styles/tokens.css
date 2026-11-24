@@ -1,0 +1,25 @@
+:root {
+  color-scheme: light;
+  --bg: #ede6d8; --surface: #fcf7ec; --rail: #f3ecde; --text: #1d1d1f; --secondary-text: #655c51; --muted: #626268;
+  --red: #c8102e; --accent: #b40e29; --coral: #e8505b; --sand: #e9dfcf;
+  --fog: #d8dce3; --fjord: #1f3a5f; --deep: #0f2038;
+  --line: #ded2bf; --soft: #f1e9da; --rose: #f5e2dc; --blue: #e9eff8;
+  --grain: url('/paper-grain.svg');
+  --display: Georgia, 'Times New Roman', serif;
+  --shadow: 0 1px 0 #fff9 inset, 0 2px 4px #432a1510, 0 8px 22px #432a150b;
+  --radius: 16px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #211e1b; --surface: #2c2723; --rail: #26221f; --text: #f5f5f7; --secondary-text: #b9aa9b; --muted: #c1b3a5;
+    --line: #50453c; --soft: #362e28; --rose: #492c2d; --blue: #222f44;
+    --shadow: 0 2px 4px #120d0a52, 0 8px 22px #120d0a2b; --accent: #ff8b9a; --fjord: #8fb1de;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #211e1b; --surface: #2c2723; --rail: #26221f; --text: #f5f5f7; --secondary-text: #b9aa9b; --muted: #c1b3a5;
+  --line: #50453c; --soft: #362e28; --rose: #492c2d; --blue: #222f44;
+  --shadow: 0 2px 4px #120d0a52, 0 8px 22px #120d0a2b; --accent: #ff8b9a; --fjord: #8fb1de;
+}
