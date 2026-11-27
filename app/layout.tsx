@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   icons: { icon: '/ugen.svg', apple: '/icon-192.png' },
   appleWebApp: { capable: true, title: 'Ugen', statusBarStyle: 'default' },
 }
-export const viewport: Viewport = { themeColor: '#ede6d8' }
+export const viewport: Viewport = { themeColor: '#edf2f9' }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <html lang="da" suppressHydrationWarning><body><Shell>{children}</Shell></body></html>
