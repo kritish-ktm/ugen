@@ -5,6 +5,7 @@ import { activeOffer, comparablePrice, normalizeStore, productMatchKey, sortByCo
 import { supermarkets } from '../../lib/supermarkets'
 import { useFeed } from '../../hooks/useFeed'
 import { usePreferences } from '../ui/Shell'
+import { ProductSearch } from './ProductSearch'
 
 export function AlcoholOffers() {
   const { t, language, online } = usePreferences()
@@ -31,11 +32,16 @@ export function AlcoholOffers() {
   const bestPrice=cheapest?comparablePrice(cheapest,sort):undefined
   const coverage=data?.coverage??[]
   const checkedStores=coverage.filter(row=>row.status!=='unavailable').length
+  function searchProduct(value:string) {
+    if(!online||!value.trim()) return
+    setQuery(value.trim());setRefine('');setMatch('all');setStore('all');setKind('all');setVisible(8)
+    if(value.trim()===query) retry()
+  }
   return <section className="card stack alcohol-search" aria-labelledby="alcohol-title">
     <h2 id="alcohol-title">{t('Sammenlign tilbud fra 8 supermarkeder','Compare offers from 8 supermarkets')}</h2>
     <p className="muted">{t('Søg efter en vare eller et mærke. Vi søger hos Netto, REMA 1000, Lidl, 365discount, føtex, Bilka, SuperBrugsen og MENY via offentlige eTilbudsavis-opslag.','Search for a product or brand across Netto, REMA 1000, Lidl, 365discount, føtex, Bilka, SuperBrugsen, and MENY through public eTilbudsavis listings.')}</p>
-    <form className="inline offer-search-form" onSubmit={event=>{event.preventDefault();if(draft.trim()){setQuery(draft.trim());setRefine('');setMatch('all');setStore('all');setVisible(8);if(draft.trim()===query)retry()}}}>
-      <label>{t('Produkt eller mærke','Product or brand')}<input type="search" value={draft} maxLength={80} required onChange={event=>setDraft(event.target.value)} placeholder="Mælk, kaffe, Tuborg…"/></label>
+    <form className="inline offer-search-form" onSubmit={event=>{event.preventDefault();searchProduct(draft)}}>
+      <ProductSearch value={draft} onChange={setDraft} onSelect={searchProduct} productNames={(data?.offers??[]).filter(offer=>activeOffer(offer)).map(offer=>offer.name)}/>
       <button className="primary" type="submit" disabled={!online||!draft.trim()}>{t('Sammenlign priser','Compare prices')}</button>
     </form>
     <div className="form-grid">

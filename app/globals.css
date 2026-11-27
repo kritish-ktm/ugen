@@ -301,9 +301,16 @@ textarea { resize: vertical; }
   .tab { font-size: .75rem; }
 }
 .alcohol-search { margin-block: 24px; }
-.offer-search-form { flex-wrap: wrap; align-items: end; }
+.offer-search-form { position: relative; flex-wrap: wrap; align-items: end; }
 .offer-search-form > label { flex: 1 1 220px; min-width: 0; }
 .offer-search-form input { width: 100%; }
+.offer-search-form > .product-search { flex: 1 1 220px; min-width: 0; }
+.product-search { position: relative; }
+.product-search > label { display: block; margin-bottom: 7px; }
+.product-suggestions { position: absolute; z-index: 20; inset: 100% 0 auto; margin: 6px 0 0; padding: 5px; list-style: none; border: 1px solid var(--line); border-radius: 14px; background: var(--fallback-surface); box-shadow: var(--shadow); }
+.product-suggestions [role='option'] { padding: 12px; min-height: 44px; border-radius: 9px; cursor: pointer; overflow-wrap: anywhere; }
+.product-suggestions [aria-selected='true'] { background: var(--soft); color: var(--accent); }
+@media (max-width: 679px) { .product-search { position: static; } }
 .cheapest-offer { padding: 20px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--soft); }
 .cheapest-offer > strong { display: block; margin-block: 10px; color: var(--accent); font-size: 1.65rem; }
 .store-comparison-scroll { max-width: 100%; overflow-x: auto; }
