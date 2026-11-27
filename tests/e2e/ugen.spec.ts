@@ -88,6 +88,61 @@ test('alcohol offers search and sort by litre or package price with clear condit
   await expect(page.getByText('Gammelt tilbud', {exact:true})).toHaveCount(0)
 })
 
+test('shopping suggestions support typing, keyboard, mouse and custom searches', async ({page})=>{
+  let requests=0, searched=''
+  await page.route(/\/api\/offers(?:\?|$)/,route=>{
+    requests++
+    searched=new URL(route.request().url()).searchParams.get('q')??''
+    return route.fulfill({json:{checked:new Date().toISOString(),offers:[{id:'suggested-product',name:'Økologisk specialkaffe',detail:'500 g',store:'Lidl',kind:'grocery',price:25,start:'2000-01-01',end:'2099-12-31',url:'https://etilbudsavis.dk/Lidl'}],sources:[],unavailable:[]}})
+  })
+  await page.goto('/mere/tilbud')
+  const input=page.getByRole('combobox',{name:'Produkt eller mærke',exact:true})
+  const suggestions=page.getByRole('listbox',{name:'Søgeforslag'})
+  await expect.poll(()=>requests).toBe(1)
+  await input.fill('øko')
+  await expect(suggestions.getByRole('option',{name:'Økologisk specialkaffe',exact:true})).toBeVisible()
+  await input.fill('m')
+  await expect(suggestions.getByRole('option',{name:'Mælk',exact:true})).toBeVisible()
+  await input.fill('maelk')
+  await expect(suggestions.getByRole('option',{name:'Mælk',exact:true})).toBeVisible()
+  expect(requests).toBe(1)
+  await input.press('ArrowDown')
+  await expect(suggestions.getByRole('option',{name:'Mælk',exact:true})).toHaveAttribute('aria-selected','true')
+  await input.press('Enter')
+  await expect.poll(()=>searched).toBe('Mælk')
+  await expect(suggestions).toBeHidden()
+  await input.fill('ka')
+  const accessibility=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()
+  expect(accessibility.violations.map(({id})=>id)).toEqual([])
+  await input.press('Escape')
+  await expect(suggestions).toBeHidden()
+  await input.fill('')
+  await expect(suggestions).toBeHidden()
+  await input.fill('arla mæ')
+  await expect(suggestions.getByRole('option',{name:'Arla mælk',exact:true})).toBeVisible()
+  await suggestions.getByRole('option',{name:'Arla mælk',exact:true}).click()
+  await expect.poll(()=>searched).toBe('Arla mælk')
+  await input.fill('Min egen specialvare')
+  await expect(suggestions).toBeHidden()
+  await input.press('Enter')
+  await expect.poll(()=>searched).toBe('Min egen specialvare')
+})
+
+test('shopping suggestions can be selected on a touch screen', async ({browser})=>{
+  const context=await browser.newContext({viewport:{width:390,height:844},hasTouch:true})
+  const page=await context.newPage()
+  try {
+    await page.route(/\/api\/offers(?:\?|$)/,route=>route.fulfill({json:{checked:new Date().toISOString(),offers:[],sources:[],unavailable:[]}}))
+    await page.goto('/mere/tilbud')
+    await page.getByRole('combobox',{name:'Produkt eller mærke',exact:true}).fill('ka')
+    await page.getByRole('option',{name:'Kaffe',exact:true}).tap()
+    await expect(page.getByRole('combobox',{name:'Produkt eller mærke',exact:true})).toHaveValue('Kaffe')
+    await expect(page.getByRole('listbox',{name:'Søgeforslag'})).toBeHidden()
+    await expect(page.locator('.alcohol-search').getByRole('status')).toContainText('Kaffe')
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  } finally {await context.close()}
+})
+
 test('shopping compares eight chains, excludes uncertain prices, and submits new product searches', async ({ page }) => {
   test.setTimeout(60_000)
   await page.setViewportSize({width:390,height:844})
