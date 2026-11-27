@@ -8,6 +8,7 @@ import { demoJourney, travelLink, type Journey, type JourneyInput, type TravelRe
 import { LoadingLines } from '../ui/LoadingLines'
 import { PageTitle } from '../ui/PageTitle'
 import { usePreferences } from '../ui/Shell'
+import { DanishTransport } from './DanishTransport'
 
 const initial = { from: '', to: '', date: '', time: '' }
 const savedRoutes: Record<string, JourneyInput> = {}
@@ -50,6 +51,7 @@ export function Travel() {
 
   return <>
     <PageTitle index={t('PÅ VEJ', 'ON THE MOVE')} title={t('Rejse', 'Travel')} description={t('Fra A til B med offentlig transport.', 'Get from A to B by public transport.')} />
+    <DanishTransport />
     <div className="dashboard">
       <section className="card stack"><div className="between"><div><p className="card-label">{t('REJSEPLAN', 'JOURNEY PLAN')}</p><h2>{t('Hvor skal du hen?', 'Where are you going?')}</h2></div><div className="summary-icon"><TrainFront size={21} /></div></div>
         <form className="stack" onSubmit={event => { event.preventDefault(); void search() }}>
