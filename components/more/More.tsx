@@ -11,6 +11,9 @@ import { PageTitle } from '../ui/PageTitle'
 import { Sheet } from '../ui/Sheet'
 import { usePreferences, UgenLink } from '../ui/Shell'
 import { WeatherCard } from './WeatherCard'
+import { ShoppingTeaser } from '../shopping/Supermarkets'
+import { EventsTeaser } from '../events/EventsExplorer'
+import { DirectoryTeaser } from '../directory/CompanyDirectory'
 
 export function More() {
   const { t, language, setLanguage, theme, setTheme, install } = usePreferences()
@@ -41,6 +44,9 @@ export function More() {
     <div className="dashboard">
       <div className="stack">
         <WeatherCard />
+        <ShoppingTeaser />
+        <EventsTeaser />
+        <DirectoryTeaser />
         <section className="card stack"><div className="between"><div><p className="card-label">{t('PLANLÆGNING', 'PLANNING')}</p><h2>{t('Ugeplan', 'Weekly planner')}</h2></div><div className="summary-icon"><CalendarRange size={19} /></div></div>
           <button type="button" className="secondary fit" onClick={togglePlanner} aria-expanded={showPlanner}>{showPlanner ? t('Skjul ugeplan', 'Hide weekly planner') : t('Åbn ugeplan', 'Open weekly planner')}</button>
           {start && showPlanner && <>

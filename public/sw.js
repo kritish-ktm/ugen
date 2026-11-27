@@ -1,6 +1,6 @@
 /* global caches, clients, self */
-const shell = 'ugen-shell-v4'
-const pages = ['/', '/nyheder', '/valuta', '/rejse', '/mere', '/mere/om']
+const shell = 'ugen-shell-v11'
+const pages = ['/', '/nyheder', '/valuta', '/rejse', '/mere', '/mere/om', '/mere/tilbud', '/mere/oplevelser', '/mere/markeder', '/job', '/bolig']
 const assets = ['/offline.html', '/paper-grain.svg', '/ugen.svg', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/icon-maskable.png']
 
 async function cachePage(cache, path) {
