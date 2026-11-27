@@ -1,6 +1,211 @@
 import { expect, test } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 
+test('full mobile menu exposes events, markets, jobs and housing without crowding bottom tabs', async ({ page }) => {
+  await page.setViewportSize({width:390,height:844})
+  await page.goto('/')
+  await page.getByRole('button',{name:'Menu',exact:true}).click()
+  const menu=page.getByRole('dialog',{name:'Menu',exact:true})
+  for(const name of ['Nyheder','Valuta','Rejse','Oplevelser','Markeder','Butikker','Job','Bolig']) await expect(menu.getByRole('link',{name,exact:true})).toBeVisible()
+  await menu.getByRole('link',{name:'Markeder',exact:true}).click()
+  await expect(menu).toHaveCount(0)
+  await expect(page.getByRole('heading',{name:'Markeder',exact:true})).toBeVisible()
+  await expect(page.locator('.tabs .tab:visible')).toHaveCount(5)
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await page.setViewportSize({width:1280,height:900})
+  await expect(page.getByRole('button',{name:'Menu',exact:true})).toBeVisible()
+  for(const name of ['Markeder','Butikker','Job','Bolig']) await expect(page.getByRole('navigation',{name:'Hovedmenu'}).getByRole('link',{name,exact:true})).toBeVisible()
+  await page.getByRole('navigation',{name:'Hovedmenu'}).getByRole('link',{name:'Butikker',exact:true}).click()
+  await expect(page).toHaveURL(/\/mere\/tilbud$/)
+  await expect(page.getByRole('navigation',{name:'Hovedmenu'}).getByRole('link',{name:'Butikker',exact:true})).toHaveAttribute('aria-current','page')
+  await page.getByRole('navigation',{name:'Hovedmenu'}).getByRole('link',{name:'Markeder',exact:true}).click()
+  await expect(page.getByRole('navigation',{name:'Hovedmenu'}).getByRole('link',{name:'Markeder',exact:true})).toHaveAttribute('aria-current','page')
+  await expect(page.locator('.tabs [aria-current=page]')).toHaveCount(1)
+})
+
+test('ad-free company directories separate recruitment, renting and buying and save favourites', async ({ page }) => {
+  await page.goto('/job')
+  await expect(page.locator('.directory-card')).toHaveCount(10)
+  await page.getByRole('button',{name:'Gem Randstad',exact:true}).click()
+  await page.getByLabel('Kun mine favoritter',{exact:true}).check()
+  await expect(page.locator('.directory-card')).toHaveCount(1)
+  await page.reload()
+  await expect(page.getByRole('button',{name:'Gem Randstad',exact:true})).toHaveAttribute('aria-pressed','true')
+  await page.getByLabel('Søg i oversigten',{exact:true}).fill('Academic')
+  await expect(page.locator('.directory-card')).toHaveCount(1)
+  await page.goto('/bolig')
+  await expect(page.locator('.directory-card')).toHaveCount(10)
+  await page.getByRole('button',{name:'Lej bolig',exact:true}).click()
+  await expect(page.locator('.directory-card')).toHaveCount(5)
+  await expect(page.getByRole('link',{name:/Søg lejebolig.*Balder/})).toHaveAttribute('href','https://www.balder.dk/lejeboliger')
+  await page.getByRole('button',{name:'Køb bolig',exact:true}).click()
+  await expect(page.locator('.directory-card')).toHaveCount(5)
+  await expect(page.getByRole('link',{name:/Søg bolig til salg.*EDC/})).toBeVisible()
+})
+
+test.beforeEach(async ({ page }) => {
+  await page.route('**/api/day-image?*', route => route.fulfill({ json: { image:null } }))
+  // Provider fixtures keep browser checks independent of retailer/venue availability.
+  await page.route('**/api/events?*', route => route.fulfill({ json: { events: [], checked: new Date().toISOString(), unavailable: [] } }))
+  const now = new Date().toISOString()
+  await page.route(/\/api\/offers(?:\?|$)/, route => route.fulfill({ json: { checked: now, unavailable: [], sources: ['REMA 1000','Netto+'], offers: [
+    { id:'can',name:'Fjord pilsner dåse',detail:'33 cl.',store:'REMA 1000',kind:'beer',price:5,perLitre:15.15,deposit:1,start:'2000-01-01',end:'2099-12-31',url:'https://shop.rema1000.dk/avisvarer',localOnly:true },
+    { id:'pack',name:'Fjord pilsner pakke',detail:'2 liter',store:'Netto+',kind:'beer',price:20,perLitre:10,start:'2000-01-01',end:'2099-12-31',url:'https://netto.dk/netto-plus/',localOnly:false,membership:true },
+    { id:'wine',name:'Test rødvin',detail:'75 cl.',store:'REMA 1000',kind:'wine',price:50,perLitre:66.67,start:'2000-01-01',end:'2099-12-31',url:'https://shop.rema1000.dk/avisvarer',localOnly:false },
+    { id:'expired',name:'Gammelt tilbud',detail:'33 cl.',store:'REMA 1000',kind:'beer',price:1,start:'2000-01-01',end:'2001-01-01',url:'https://shop.rema1000.dk/avisvarer',localOnly:false },
+  ] } }))
+})
+
+test('special-day pictures include credits and disappear gracefully when unavailable', async ({ page }) => {
+  await page.route('**/api/day-image?*', route => route.fulfill({ json: new URL(route.request().url()).searchParams.get('date') === '2026-12-13' ? { image: {
+    title:'Luciadag', imageUrl:'https://images.example.test/lucia.svg', articleUrl:'https://da.wikipedia.org/wiki/Luciadag', fileUrl:'https://commons.wikimedia.org/wiki/File:Lucia.jpg', artist:'Test Photographer', license:'CC BY 4.0',licenseUrl:'https://creativecommons.org/licenses/by/4.0/',
+  } } : {image:null} }))
+  await page.route('https://images.example.test/lucia.svg', route => route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8"><rect width="12" height="8" fill="teal"/></svg>'}))
+  await page.goto('/?year=2026&week=50')
+  await page.getByRole('button',{name:/søndag 13. december 2026/i}).click()
+  const day=page.getByRole('dialog')
+  await expect(day.getByRole('img',{name:'Illustration af Luciadag'})).toBeVisible()
+  await expect(day.getByText('Test Photographer', {exact:false})).toBeVisible()
+  await expect(day.getByRole('link',{name:'CC BY 4.0'})).toHaveAttribute('href','https://creativecommons.org/licenses/by/4.0/')
+  await page.keyboard.press('Escape')
+  await page.getByRole('button',{name:/mandag 7. december 2026/i}).click()
+  await expect(page.getByRole('dialog').locator('.day-picture')).toHaveCount(0)
+})
+
+test('alcohol offers search and sort by litre or package price with clear conditions', async ({ page }) => {
+  await page.goto('/mere/tilbud')
+  await page.getByLabel('Varetype', { exact:true }).selectOption('beer')
+  await expect(page.locator('.offer-result')).toHaveCount(1)
+  await page.getByLabel('Medtag medlems- og apppriser').check()
+  await expect(page.locator('.offer-result')).toHaveCount(2)
+  await expect(page.locator('.offer-result').first()).toContainText('Fjord pilsner pakke')
+  await expect(page.locator('.offer-result').first()).toContainText('Kræver medlemskab eller app')
+  await page.getByLabel('Sortér tilbud', { exact:true }).selectOption('price')
+  await expect(page.locator('.offer-result').first()).toContainText('Fjord pilsner dåse')
+  await expect(page.locator('.offer-result').first()).toContainText('Findes ikke i alle butikker')
+  await page.getByLabel('Filtrér resultater').fill('pakke')
+  await expect(page.locator('.offer-result')).toHaveCount(1)
+  await expect(page.getByText('Gammelt tilbud', {exact:true})).toHaveCount(0)
+})
+
+test('shopping compares eight chains, excludes uncertain prices, and submits new product searches', async ({ page }) => {
+  test.setTimeout(60_000)
+  await page.setViewportSize({width:390,height:844})
+  const product={name:'Test mælk',detail:'1 liter',kind:'grocery',unit:'l',start:'2000-01-01',end:'2099-12-31',url:'https://etilbudsavis.dk/Netto',localOnly:false}
+  const stores=[['netto','Netto'],['rema','REMA 1000'],['lidl','Lidl'],['365','365discount'],['foetex','føtex'],['bilka','Bilka'],['brugsen','SuperBrugsen'],['meny','MENY']]
+  let searched=''
+  await page.route(/\/api\/offers(?:\?|$)/,route=>{
+    searched=new URL(route.request().url()).searchParams.get('q')??''
+    return route.fulfill({json:{query:searched,checked:new Date().toISOString(),sources:['eTilbudsavis'],unavailable:['MENY'],coverage:stores.map(([id,store])=>({id,store,status:id==='meny'?'unavailable':['rema','lidl','netto','foetex'].includes(id)?'ok':'empty',count:1,sourceUrl:'https://etilbudsavis.dk/soeg/'+encodeURIComponent(store+' '+searched)})),offers:[
+      {...product,id:'rema-milk',store:'REMA 1000',price:10,unitPrice:10},
+      {...product,id:'lidl-milk',store:'Lidl',price:8,unitPrice:8},
+      {...product,id:'netto-member',store:'Netto',price:6,unitPrice:6,membership:true},
+      {...product,id:'foetex-range',store:'føtex',price:4,unitPrice:2,unitPriceIsMax:true,mixed:true},
+    ]}})
+  })
+  await page.goto('/mere/tilbud')
+  const winner=page.getByRole('region',{name:'Billigste sammenlignelige fund'})
+  await expect(winner).toContainText('Lidl')
+  await expect(page.locator('.store-comparison tbody tr')).toHaveCount(8)
+  await expect(page.locator('.store-comparison tbody tr').filter({hasText:'MENY'})).toContainText('Kilden utilgængelig')
+  await expect(page.locator('.store-comparison tbody tr').filter({hasText:'Bilka'})).toContainText('Ingen aktive match fundet')
+  await expect(page.locator('.store-comparison tbody tr').filter({hasText:'føtex'})).toContainText('Ingen entydig pris')
+  await page.getByLabel('Sammenlign samme angivne vare',{exact:true}).selectOption({label:'Test mælk · 2 butikker'})
+  await expect(page.locator('.offer-result')).toHaveCount(2)
+  await page.getByLabel('Medtag medlems- og apppriser').check()
+  await expect(winner).toContainText('Netto')
+  await page.getByLabel('Sortér tilbud',{exact:true}).selectOption('ending')
+  await expect(winner).toHaveCount(0)
+  await expect(page.locator('.store-comparison tbody tr').filter({hasText:'Lidl'})).toContainText('2099-12-31')
+  await page.getByLabel('Produkt eller mærke',{exact:true}).fill('mælk')
+  await page.getByRole('button',{name:'Sammenlign priser',exact:true}).click()
+  await expect.poll(()=>searched).toBe('mælk')
+  await expect(page.locator('.alcohol-search').getByRole('status')).toContainText('mælk')
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  const accessibility=await new AxeBuilder({page}).withTags(['wcag2a','wcag2aa','wcag21a','wcag21aa']).analyze()
+  expect(accessibility.violations.map(({id,nodes})=>({id,targets:nodes.map(node=>node.target)}))).toEqual([])
+})
+
+test('Sunday markets and kayak parades have dated, filterable event listings', async ({ page }) => {
+  await page.goto('/mere/oplevelser')
+  await page.getByLabel('Fra dato', {exact:true}).fill('2026-11-27')
+  await page.getByLabel('Til dato', {exact:true}).fill('2026-12-13')
+  await page.getByRole('button',{name:'Vis perioden',exact:true}).click()
+  await page.getByLabel('Kun søndagsmarkeder', {exact:true}).check()
+  const results=page.locator('.event-explorer .danish-events')
+  await expect(results.getByText('Veras Market under Buen', {exact:true})).toBeVisible()
+  await expect(results.getByText('Loppemarked i Bella · søndag', {exact:true})).toBeVisible()
+  await expect(results.getByText('Loppemarked i Bella · lørdag', {exact:true})).toHaveCount(0)
+  await page.getByLabel('Kun søndagsmarkeder', {exact:true}).uncheck()
+  await page.getByLabel('Arrangementstype', {exact:true}).selectOption('social')
+  await page.getByLabel('By', {exact:true}).selectOption('København')
+  await expect(results.getByText('Lucia i Kajak', {exact:true})).toBeVisible()
+  await expect(results).toContainText('17:00–19:00')
+  await page.getByLabel('Arrangementstype', {exact:true}).selectOption('concert')
+  await expect(results.getByText('ROYA · Store VEGA', {exact:true})).toBeVisible()
+})
+
+test('week selection works with motion, shared links, history, and invalid URLs', async ({ page, context }) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.goto('/')
+  const firstWeek = page.locator('.week-cell').first()
+  const number = await firstWeek.textContent()
+  await firstWeek.click()
+  await expect(page.locator('#week-title')).toHaveText('Uge ' + number)
+  await expect(page).toHaveURL(new RegExp('week=' + number))
+  await expect(page.locator('#why-weeks')).toHaveText('“Skal vi sige uge 7?”')
+  await page.getByRole('button', { name: 'Del uge', exact: true }).click()
+  const shared = await page.evaluate(() => navigator.clipboard.readText())
+  expect(new URL(shared).searchParams.get('week')).toBe(number)
+  await page.goto('/?year=2026&week=53')
+  await expect(page.locator('#week-title')).toHaveText('Uge 53')
+  await expect(page.locator('.hero-date')).toContainText('2026')
+  await page.getByRole('button', { name: 'Næste', exact: true }).click()
+  await expect(page).toHaveURL(/year=2027&week=1/)
+  await page.goBack()
+  await expect(page.locator('#week-title')).toHaveText('Uge 53')
+  await page.reload()
+  await expect(page.locator('#week-title')).toHaveText('Uge 53')
+  await page.goto('/?year=2027&week=53')
+  await expect(page.getByText('Ugelinket er ugyldigt.', { exact: false })).toBeVisible()
+  await expect(page.locator('.calendar-grid')).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+test('events follow the selected week and area', async ({ page }) => {
+  await page.goto('/?year=2026&week=49')
+  // The card is identified by its heading; its controls remain useful in an empty week.
+  const card = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Det sker i Danmark' }) }).last()
+  await expect(card.getByText('H.C. Andersen Julemarkedet')).toBeVisible()
+  await page.getByLabel('Område', { exact: true }).selectOption('Aarhus')
+  await expect(card.getByText('Ingen udvalgte arrangementer', { exact: false })).toBeVisible()
+  await page.getByRole('button', { name: 'Næste', exact: true }).click()
+  await page.getByLabel('Område', { exact: true }).selectOption('Odense')
+  await expect(card.getByText('H.C. Andersen Julemarkedet')).toBeVisible()
+})
+
+test('supermarket search, official offer links, and favourites persist', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await page.getByRole('link', { name: 'Se supermarkeder & tilbud' }).click()
+  await expect(page.locator('.store-card')).toHaveCount(8)
+  await expect(page.getByRole('link', { name: 'Se aktuelle tilbud hos Netto', exact: true })).toHaveAttribute('href', 'https://netto.dk/netto-avisen/')
+  await page.getByRole('button', { name: 'Favorit Netto', exact: true }).click()
+  await page.getByRole('button', { name: 'Mine favoritter', exact: true }).click()
+  await expect(page.locator('.store-card')).toHaveCount(1)
+  await page.reload()
+  await page.getByRole('button', { name: 'Mine favoritter', exact: true }).click()
+  await expect(page.locator('.store-card')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Alle butikker', exact: true }).click()
+  await page.getByLabel('Find et supermarked').fill('REMA')
+  await expect(page.locator('.store-card')).toHaveCount(1)
+  await expect(page.locator('.store-card h2')).toHaveText('REMA 1000')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+})
+
 test('mobile navigation and the dated week summary', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
   await page.goto('/playground')
@@ -75,6 +280,9 @@ test('currency keypad, chart, favorites, and offline data', async ({ page, conte
 
 test('headlines, stories, travel fallback, weather and preferences', async ({ page }) => {
   const published = new Date().toISOString()
+  await page.route('**/api/news/image?*', route => route.request().url().includes('preview-test')
+    ? route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8"><rect width="12" height="8" fill="teal"/></svg>' })
+    : route.fulfill({ status: 404 }))
   await page.route('https://images.example.test/**', route => route.request().url().endsWith('/beer.svg')
     ? route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="8"><rect width="12" height="8" fill="teal"/></svg>' })
     : route.fulfill({ status: 404 }))
@@ -82,6 +290,7 @@ test('headlines, stories, travel fallback, weather and preferences', async ({ pa
     unavailable: ['TV 2'], articles: [
       { title: 'En dansk overskrift', source: 'DR', url: 'https://www.dr.dk/nyheder/indland/test', published, category: 'domestic', imageUrl: 'https://images.example.test/unavailable.jpg' },
       { title: 'Ny &#248;l er inspireret af verdens l&#230;ngste sl&#230;derejse', source: 'Politiken', url: 'https://politiken.dk/rejser/art11048670', published, category: 'latest', imageUrl: 'https://images.example.test/beer.svg' },
+      { title: 'Historie med artikelbillede', source: 'DR', url: 'https://www.dr.dk/nyheder/preview-test', published, category: 'latest' },
     ],
   } }))
   await page.route('**/api/weather?*', route => route.fulfill({ json: { temperature: 9, condition: 'rain', time: '2026-11-10T13:00:00Z' } }))
@@ -90,6 +299,7 @@ test('headlines, stories, travel fallback, weather and preferences', async ({ pa
   const article = page.getByRole('link', { name: /Ny øl er inspireret af verdens længste slæderejse/ })
   await expect(article).toBeVisible()
   await expect(article.locator('img')).toHaveJSProperty('naturalWidth', 12)
+  await expect(page.getByRole('link', { name: /Historie med artikelbillede/ }).locator('img')).toHaveJSProperty('naturalWidth', 12)
   await page.getByRole('button', { name: 'Indland' }).click()
   await expect(page.getByRole('link', { name: /En dansk overskrift/ }).locator('.news-thumbnail-placeholder')).toBeVisible()
   await expect(page.getByRole('link', { name: /En dansk overskrift/ })).toHaveAttribute('href', /www.dr.dk/)
@@ -134,10 +344,21 @@ test('the production PWA reloads and navigates offline', async ({ page, context 
   await expect(page.getByRole('heading', { name: 'Mere', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Åbn ugeplan' }).click()
   await expect(page.getByRole('button', { name: /Tilføj påmindelse / })).toHaveCount(7)
+  await page.getByRole('link', { name: 'Se supermarkeder & tilbud' }).click()
+  await expect(page.locator('.store-card')).toHaveCount(8)
+  await expect(page.getByText('Butikkernes tilbud kræver internet.', { exact: false })).toBeVisible()
+  await page.goto('/?year=2026&week=53')
+  await expect(page.locator('#week-title')).toHaveText('Uge 53')
+  await page.goto('/job')
+  await expect(page.locator('.directory-card')).toHaveCount(10)
+  await expect(page.getByText('Oversigten og dine favoritter virker offline.', {exact:false})).toBeVisible()
+  await page.goto('/mere/markeder')
+  await expect(page.getByRole('heading',{name:'Markeder',exact:true})).toBeVisible()
 })
 
 test('axe detects no WCAG A/AA violations on primary routes or day sheet', async ({ page }) => {
-  for (const path of ['/', '/valuta', '/nyheder', '/rejse', '/mere', '/mere/om']) {
+  test.setTimeout(75_000)
+  for (const path of ['/', '/valuta', '/nyheder', '/rejse', '/mere', '/mere/om', '/mere/tilbud', '/mere/oplevelser', '/mere/markeder', '/job', '/bolig']) {
     await page.goto(path)
     await expect(page.locator('h1')).toBeVisible()
     const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
