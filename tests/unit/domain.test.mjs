@@ -6,8 +6,36 @@ import { dateKey, holidays, nextHoliday } from '../../lib/holidays.ts'
 import { amountValue, convert } from '../../lib/currency.ts'
 import { parseRss } from '../../lib/rss.ts'
 import { travelLink } from '../../lib/travel.ts'
+import { readWeekLink } from '../../lib/week-link.ts'
+import { fetchArticleImage, previewImage, publisherArticle } from '../../lib/news-image.ts'
 
 const date = (year, month, day) => new Date(year, month - 1, day, 12)
+test('shared week links validate week-years and reject malformed input without throwing', () => {
+  assert.equal(dateKey(readWeekLink(new URLSearchParams('year=2026&week=53')).date), '2026-12-28')
+  for (const query of ['year=2027&week=53', 'week=3', 'year=no&week=1', 'year=2026&week=-1', 'year=2026&week=2.5', 'year=2026&week=Infinity']) {
+    assert.deepEqual(readWeekLink(new URLSearchParams(query)), { date: null, invalid: true })
+  }
+  assert.deepEqual(readWeekLink(new URLSearchParams()), { date: null, invalid: false })
+})
+
+test('publisher preview extraction handles attribute order, entities and safe fallbacks', () => {
+  const article = new URL('https://www.dr.dk/nyheder/a')
+  assert.equal(previewImage('<head><meta content="/photo.jpg?x=1&amp;y=2" property="og:image"></head>', article), 'https://www.dr.dk/photo.jpg?x=1&y=2')
+  assert.equal(previewImage("<meta property='og:image' content='javascript:alert(1)'><meta name='twitter:image' content='https://asset.dr.dk/photo.jpg'>", article), 'https://asset.dr.dk/photo.jpg')
+  assert.equal(previewImage('<meta property="og:image" content="https://127.0.0.1/private">', article), null)
+  assert.equal(previewImage('<head></head><body><meta property="og:image" content="https://asset.dr.dk/body.jpg"></body>', article), null)
+  for (const url of ['https://localhost/a', 'http://www.dr.dk/a', 'https://www.dr.dk.evil.test/a', 'https://user:pass@www.dr.dk/a', 'https://www.dr.dk:8080/a']) assert.equal(publisherArticle(url), null)
+})
+
+test('article previews never fetch redirects outside the publisher allowlist', async () => {
+  let calls = 0
+  const fake = async () => { calls++; return new Response(null, { status: 302, headers: { location: 'http://127.0.0.1/private' } }) }
+  assert.equal(await fetchArticleImage('https://www.dr.dk/nyheder/a', fake), null)
+  assert.equal(calls, 1)
+  assert.equal(await fetchArticleImage('https://evil.test/a', fake), null)
+  assert.equal(calls, 1)
+  assert.equal(await fetchArticleImage('https://politiken.dk/a', async () => new Response('<head><meta property="og:image" content="https://politiken.dk/photo.jpg"></head>', { headers: { 'content-type': 'text/html' } })), 'https://politiken.dk/photo.jpg')
+})
 test('ISO week-year spans New Year and starts on Monday', () => {
   assert.deepEqual(isoWeek(date(2026, 12, 31)), { year: 2026, week: 53 })
   assert.deepEqual(isoWeek(date(2027, 1, 1)), { year: 2026, week: 53 })

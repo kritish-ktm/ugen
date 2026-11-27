@@ -2,12 +2,14 @@
 import { useEffect, useState } from 'react'
 import { addDays, addMonths, addWeeks, endOfMonth, endOfISOWeek, format, getDayOfYear, startOfISOWeek, startOfMonth } from 'date-fns'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { ArrowRight, Bell, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, Flag, Plus, Sunrise, Sunset } from 'lucide-react'
+import { ArrowRight, Bell, CalendarDays, CalendarRange, ChevronLeft, ChevronRight, Flag, Plus, Share2, Sunrise, Sunset } from 'lucide-react'
 import { useLocal } from '../../hooks/useLocal'
 import { capitalize, locales } from '../../lib/i18n'
 import { danishToday, dateFromWeek, fromDateKey, isoWeek, weeksInYear } from '../../lib/iso-week'
 import { dateKey, holidays, nextHoliday, type Holiday } from '../../lib/holidays'
-import { denmarkEvents, eventsBetween, type DenmarkEvent } from '../../lib/denmark-events'
+import { denmarkEvents, eventsBetween, mergeEvents, type DenmarkEvent } from '../../lib/denmark-events'
+import type { EventsData } from '../../lib/event-discovery'
+import { useFeed } from '../../hooks/useFeed'
 import { DenmarkEventsCard, DenmarkEventList } from './DenmarkEvents'
 import { schoolHoliday } from '../../lib/school'
 import { nameDay } from '../../lib/nameDays'
@@ -16,6 +18,10 @@ import { PageTitle } from '../ui/PageTitle'
 import { Sheet } from '../ui/Sheet'
 import { usePreferences } from '../ui/Shell'
 import { ReminderForm, ReminderList, useReminders } from './Reminders'
+import { readWeekLink } from '../../lib/week-link'
+import { WeekExplainer } from './WeekExplainer'
+import { ShoppingTeaser } from '../shopping/Supermarkets'
+import { DayImage } from './DayImage'
 
 type View = 'month' | 'week' | 'day'
 const views: View[] = ['month', 'week', 'day']
@@ -27,12 +33,15 @@ function monthRows(date: Date) {
   return rows
 }
 
-export function Calendar({ initialToday }: { initialToday: string }) {
-  const { language, t } = usePreferences()
+export function Calendar({ initialToday, initialSelection = null, initialInvalid = false }: { initialToday: string; initialSelection?: string | null; initialInvalid?: boolean }) {
+  const { language, t, online } = usePreferences()
   const reduced = useReducedMotion()
   const [todayKey, setToday] = useState(initialToday)
-  const [choice, setChoice] = useState<string | null>(null)
-  const [view, setView] = useState<View>('month')
+  const [choice, setChoice] = useState<string | null>(initialSelection)
+  const [view, setView] = useState<View>(initialSelection ? 'week' : 'month')
+  const [invalid, setInvalid] = useState(initialInvalid)
+  const [shareStatus, setShareStatus] = useState('')
+  const [shareUrl, setShareUrl] = useState('')
   const [detail, setDetail] = useState<string | null>(null)
   const [jump, setJump] = useState(false)
   const [reminders] = useReminders()
@@ -62,11 +71,40 @@ export function Calendar({ initialToday }: { initialToday: string }) {
   const activeWeek = isoWeek(today).week === week.week && isoWeek(today).year === week.year
   const range = f(weekStart, 'd. MMM') + ' – ' + f(weekEnd, 'd. MMM')
   const month = selected.getMonth()
-  const localEvents = [...denmarkEvents(year), ...denmarkEvents(year - 1).filter(event => event.end < year + '-01-01'), ...denmarkEvents(year + 1).filter(event => event.start >= (year + 1) + '-01-01')]
-  const currentEvents = denmarkEvents(today.getFullYear())
-  const upcomingEvents = [...currentEvents, ...denmarkEvents(today.getFullYear() + 1).filter(event => event.start > today.getFullYear() + '-12-31')]
-    .filter(event => event.end >= todayKey).slice(0, 6)
+  const discovered = useFeed<EventsData>('/api/events?start=' + dateKey(weekStart) + '&end=' + dateKey(weekEnd), online)
+  const localEvents = mergeEvents([...(discovered.data?.events ?? []), ...[year - 1, year, year + 1].flatMap(denmarkEvents)])
+  const weekEvents = eventsBetween(localEvents, dateKey(weekStart), dateKey(weekEnd))
   const selectedEvents = eventsBetween(localEvents, selectedKey)
+
+  useEffect(() => {
+    const restore = () => {
+      const selection = readWeekLink(new URLSearchParams(window.location.search))
+      setChoice(selection.date ? dateKey(selection.date) : null)
+      setView(selection.date ? 'week' : 'month')
+      setInvalid(selection.invalid)
+      setShareStatus(''); setShareUrl('')
+    }
+    restore()
+    window.addEventListener('popstate', restore)
+    return () => window.removeEventListener('popstate', restore)
+  }, [])
+
+  function choose(key: string | null, nextView: View = view) {
+    setChoice(key); setView(nextView); setInvalid(false); setShareStatus(''); setShareUrl('')
+    const url = new URL(window.location.href)
+    if (key && nextView !== 'month') {
+      const selectedWeek = isoWeek(fromDateKey(key))
+      url.searchParams.set('year', String(selectedWeek.year)); url.searchParams.set('week', String(selectedWeek.week))
+    } else { url.searchParams.delete('year'); url.searchParams.delete('week') }
+    // Preserve the router's existing history state when changing calendar-only parameters.
+    if (url.href !== window.location.href) window.history.pushState(window.history.state, '', url)
+  }
+  async function share() {
+    const url = new URL('/', window.location.origin)
+    url.searchParams.set('year', String(week.year)); url.searchParams.set('week', String(week.week))
+    try { await navigator.clipboard.writeText(url.href); setShareStatus(t('Link kopieret', 'Link copied')) }
+    catch { setShareUrl(url.href); setShareStatus(t('Kopiér linket nedenfor', 'Copy the link below')) }
+  }
 
   useEffect(() => {
     const refresh = () => setToday(danishToday())
@@ -78,7 +116,7 @@ export function Calendar({ initialToday }: { initialToday: string }) {
 
   function step(direction: number) {
     const next = view === 'month' ? addMonths(selected, direction) : view === 'week' ? addWeeks(selected, direction) : addDays(selected, direction)
-    setChoice(dateKey(next))
+    choose(dateKey(next))
   }
   function showDay(key: string) { setChoice(key); setDetail(key) }
   function cell(date: Date) {
@@ -97,14 +135,16 @@ export function Calendar({ initialToday }: { initialToday: string }) {
 
   return <>
     <PageTitle index={t('UGEOVERBLIK', 'WEEK AT A GLANCE')} title={t('Kalender', 'Calendar')} description={t('Hele ugen. Lige ved hånden.', 'The whole week, at your fingertips.')} />
+    {invalid && <p className="notice" role="status">{t('Ugelinket er ugyldigt. Her er kalenderen for i dag.', 'This week link is invalid. Here is today’s calendar.')}</p>}
     <section className="hero" aria-labelledby="week-title">
       <span className="paper-flag" aria-hidden="true" />
       <p className="hero-label"><span className="section-dot" />{activeWeek ? t('DENNE UGE', 'THIS WEEK') : t('VALGT UGE', 'SELECTED WEEK')} · {week.year}</p>
       <h2 id="week-title" className="hero-number">{hero}</h2>
-      <p className="hero-date">{activeWeek ? capitalize(f(today, 'EEEE d. MMMM')) : range}</p>
+      <p className="hero-date">{range} · {week.year}</p>
+      <div className="hero-note">{t('Plads til hverdag. Tid til det gode.', 'Room for everyday life. Time for the good things.')}</div>
     </section>
     <div className="dashboard">
-      <section className="card calendar-card stack" aria-label={t('Kalendervisning', 'Calendar view')}>
+      <div className="stack calendar-main"><section className="card calendar-card stack" aria-label={t('Kalendervisning', 'Calendar view')}>
         <div className="between calendar-toolbar">
           <div><p className="card-label">{t('KALENDER', 'CALENDAR')}</p><h2>{view === 'month' ? capitalize(f(selected, 'MMMM yyyy')) : view === 'week' ? t('Uge ', 'Week ') + week.week : capitalize(f(selected, 'd. MMMM'))}</h2></div>
           <div className="inline">
@@ -113,10 +153,10 @@ export function Calendar({ initialToday }: { initialToday: string }) {
           </div>
         </div>
         <div className="between calendar-tools">
-          <div className="segments" role="group" aria-label={t('Visning', 'View')}>{views.map((item, i) => <button key={item} type="button" aria-pressed={item === view} onClick={() => setView(item)}>
+          <div className="segments" role="group" aria-label={t('Visning', 'View')}>{views.map((item, i) => <button key={item} type="button" aria-pressed={item === view} onClick={() => choose(choice, item)}>
             {item === view && <motion.i layoutId="calendar-segment" />}{t(['Måned', 'Uge', 'Dag'][i], ['Month', 'Week', 'Day'][i])}
           </button>)}</div>
-          <button type="button" className="secondary today-button" onClick={() => setChoice(null)}>{t('I dag', 'Today')}</button>
+          <button type="button" className="secondary today-button" onClick={() => choose(null)}>{t('I dag', 'Today')}</button>
         </div>
         {view !== 'day' ? <div className="calendar-grid" data-view={view}>
           <div className="calendar-row calendar-head"><span>{t('UGE', 'WK')}</span>{seven(weekStart).map(day => <span key={day.getDay()}>{f(day, 'EEE')}</span>)}</div>
@@ -124,7 +164,7 @@ export function Calendar({ initialToday }: { initialToday: string }) {
             {(view === 'month' ? monthRows(selected) : [days]).map(row => {
               const rowWeek = isoWeek(row[0])
               return <motion.div layout={reduced ? false : 'position'} exit={reduced ? { opacity: 0 } : { opacity: 0, scaleY: .78 }} key={dateKey(row[0])} className={'calendar-row' + (rowWeek.week === week.week && rowWeek.year === week.year ? ' current-row' : '')}>
-                <button type="button" className="week-cell" aria-label={t('Vis uge ', 'Show week ') + rowWeek.week} onClick={() => { setChoice(dateKey(row[0])); setView('week') }}>{rowWeek.week}</button>
+                <button type="button" className="week-cell" aria-label={t('Vis uge ', 'Show week ') + rowWeek.week} onClick={() => choose(dateKey(row[0]), 'week')}>{rowWeek.week}</button>
                 {row.map(cell)}
               </motion.div>
             })}
@@ -141,6 +181,9 @@ export function Calendar({ initialToday }: { initialToday: string }) {
           <button type="button" className="secondary jump-button" onClick={() => setJump(true)}><CalendarRange size={16} />{t('Gå til uge', 'Go to week')}</button>
         </div>
       </section>
+      <DenmarkEventsCard events={weekEvents} week={week.week} />
+      <WeekExplainer />
+      </div>
       <aside className="stack">
         <section className="card stack week-summary">
           <div className="between"><div><p className="card-label">{t('UGENS OVERBLIK', 'WEEK SUMMARY')}</p><h2>{t('Uge ', 'Week ')}{week.week}</h2></div><div className="summary-icon"><CalendarRange size={20} /></div></div>
@@ -164,14 +207,18 @@ export function Calendar({ initialToday }: { initialToday: string }) {
           <div className="summary-stat"><span className="inline"><Bell size={16} />{t('Påmindelser', 'Reminders')}</span><strong>{weekReminders.length}</strong></div>
           <div className="summary-stat"><span className="inline"><Flag size={16} />{t('Helligdage', 'Public holidays')}</span><strong>{holidayCount}</strong></div>
           <button type="button" className="secondary fit" onClick={() => setDetail(selectedKey)}><Plus size={16} />{t('Tilføj påmindelse', 'Add reminder')}</button>
+          <button type="button" className="secondary fit" onClick={share}><Share2 size={16} />{t('Del uge', 'Share week')}</button>
+          {shareStatus && <p className="muted small" role="status">{shareStatus}</p>}
+          {shareUrl && <label>{t('Ugelink', 'Week link')}<input readOnly value={shareUrl} onFocus={event => event.target.select()} /></label>}
         </section>
         <section className="card next-holiday">
           <div className="summary-icon"><Flag size={17} /></div><div><p className="card-label">{t('NÆSTE HELLIGDAG', 'NEXT PUBLIC HOLIDAY')}</p><h3>{upcoming[language]}</h3><p className="muted small">{f(upcoming.date, 'd. MMMM')} · {upcoming.remaining} {t('dage', 'days')}</p></div>
         </section>
-        <DenmarkEventsCard events={upcomingEvents} />
+        <DayImage key={dateKey(upcoming.date)} date={dateKey(upcoming.date)} compact />
+        <ShoppingTeaser />
       </aside>
     </div>
-    {jump && <WeekJump initial={week} onClose={() => setJump(false)} onJump={date => { setChoice(dateKey(date)); setView('week'); setJump(false) }} />}
+    {jump && <WeekJump initial={week} onClose={() => setJump(false)} onJump={date => { choose(dateKey(date), 'week'); setJump(false) }} />}
     {detail && <DaySheet key={detail} date={fromDateKey(detail)} holiday={events.get(detail)} localEvents={eventsBetween(localEvents, detail)} onClose={() => setDetail(null)} />}
   </>
 }
@@ -204,6 +251,7 @@ function DaySheet({ date, holiday, localEvents, onClose }: { date: Date; holiday
   const iso = isoWeek(date)
   return <Sheet title={capitalize(format(date, 'EEEE d. MMMM', { locale: locales[language] }))} onClose={onClose} sharedId={'day-' + key}>
     <div className="stack">
+      <DayImage key={key} date={key} />
       {holiday && <p className="inline"><Flag size={17} />{holiday[language]}</p>}
       {schoolHoliday(key) && <p className="notice">{t('Vejledende skoleferie i København', 'Advisory Copenhagen school break')}</p>}
       {localEvents.length > 0 && <section><h3>{t('Arrangementer og traditioner', 'Events and traditions')}</h3><DenmarkEventList events={localEvents} /></section>}
