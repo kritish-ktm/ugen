@@ -1,6 +1,6 @@
 'use client'
 import { useState } from 'react'
-import { ArrowUpRight, Newspaper } from 'lucide-react'
+import { Newspaper } from 'lucide-react'
 import { useFeed } from '../../hooks/useFeed'
 import { decodeHeadline } from '../../lib/news-title'
 import { languageTags } from '../../lib/i18n'
@@ -43,11 +43,10 @@ export function News() {
         {error && <div className="inline"><p className="muted small" role="status">{t('Friske overskrifter er ikke tilgængelige.', 'Fresh headlines are unavailable.')}</p>{online && <button className="secondary" type="button" onClick={retry}>{t('Prøv igen', 'Retry')}</button>}</div>}
         {data?.unavailable.length ? <p className="muted small">{t('Feed utilgængeligt', 'Feed unavailable')} · {data.unavailable.join(', ')}</p> : null}
         {articles.length ? <ul className="headlines">{articles.map(item => <li key={item.url}><a className="headline-link" href={item.url} target="_blank" rel="noopener noreferrer">
-          <NewsThumbnail key={item.imageUrl} src={item.imageUrl} />
+          <NewsThumbnail key={item.imageUrl} src={item.imageUrl} url={item.url} source={item.source} />
           <span className="headline-copy"><span className="source-label">{item.source}</span><strong>{decodeHeadline(item.title)}</strong><time className="muted small" dateTime={item.published}>{relative(item.published, languageTags[language])}</time></span>
-          <ArrowUpRight size={18} aria-hidden="true" />
         </a></li>)}</ul> : loading ? <div role="status" aria-label={t('Henter overskrifter', 'Loading headlines')}><LoadingLines /></div> : !error && <p className="empty">{t('Ingen overskrifter i denne kategori lige nu.', 'There are no headlines in this category right now.')}</p>}
-        <div className="chip-row">{sources.map(([name, href]) => <a key={name} href={href} className="secondary" target="_blank" rel="noopener noreferrer">{name}<ArrowUpRight size={14} /></a>)}</div>
+        <div className="chip-row">{sources.map(([name, href]) => <a key={name} href={href} className="secondary" target="_blank" rel="noopener noreferrer">{name}</a>)}</div>
       </section>
     </div>
   </>
